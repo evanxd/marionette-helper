@@ -117,19 +117,102 @@ MarionetteHelper.prototype = {
 
 
   /**
-   * Find some element and wait for it to be displayed.
+   * Wait for an element to be added to the DOM and displayed
    * @param {Marionette.Element|string} el element or some css selector.
    * @return {Marionette.Element} Element we find with css selector.
    */
   waitForElement: function(el) {
     var client = this.client;
 
-    while (!isElement(el)) {
+    if (!isElement(el)) {
       el = client.findElement(el);
     }
 
-    client.waitFor(function() { return el.displayed(); });
+    client.waitFor(el.displayed.bind(el));
     return el;
+  },
+
+  /**
+   * Wait for a child element of some parent to be added to the DOM
+   * and displayed.
+   *
+   * @param {Marionette.Element|string} parent element or css selector.
+   * @param {Marionette.Element|string} el element or css selector.
+   * @return {Marionette.Element} Element we find with css selector.
+   */
+  waitForChild: function(parent, el) {
+    parent = this.waitForElement(parent);
+    if (!isElement(el)) {
+      el = parent.findElement(el);
+    }
+
+    return this.waitForElement(el);
+  },
+
+  /**
+   * Wait for an element either hidden or removed from the dom
+   * @param {Marionette.Element|string} el element or some css selector.
+   */
+  waitForElementToDisappear: function(el) {
+    if (!isElement(el)) {
+      try {
+        el = this.client.findElement(el);
+      } catch (err) {
+        if (err && err.type === 'NoSuchElement') {
+          // if the element already can't be found, we are done
+          return;
+        }
+        // something in the element search went horribly wrong
+        // so rethrow the error instead of just returning false
+        throw err;
+      }
+    }
+    this.client.waitFor(function() {
+      try {
+        return !el.displayed();
+      } catch (err) {
+        if (err && err.type === 'StaleElementReference') {
+          // the element was removed from the dom, we are done
+          return true;
+        }
+        // the client threw an unexpected error, rethrow it
+        throw err;
+      }
+    });
+  },
+
+  /**
+   * select specific option from target select element
+   * @param {Marionette.Element|String} el element or some css selector.
+   * @param {String} optionText text for the option
+   */
+  tapSelectOption: function(el, optionText) {
+    var selectedOption = null;
+
+    if (!isElement(el)) {
+      el = this.client.findElement(el);
+    }
+
+    el.findElements('option').some(function(optionEl) {
+      if (optionEl.text() === optionText) {
+        selectedOption = optionEl;
+        return true;
+      }
+      return false;
+    });
+
+    selectedOption.scriptWith(function(selectedOptionEl) {
+      selectedOptionEl.selected = true;
+    });
+
+    el.scriptWith(function(selectEl) {
+      var evt = new Event('change', {
+        'view': window,
+        'bubbles': true,
+        'cancelable': true
+      });
+      selectEl.dispatchEvent(evt);
+    });
   }
 };
 
